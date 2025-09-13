@@ -68,7 +68,7 @@ CRT-Reports-Dashboard/
 ### Clone the repository
 
 ```bash
-git clone https://github.com/your-username/CRT-Reports-Dashboard.git
+git clone https://github.com/your-username/CRT-Reports-Dashboard-Frontend.git
 cd CRT-Reports-Dashboard
 ```
 
