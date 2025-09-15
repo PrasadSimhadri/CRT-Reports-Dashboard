@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { DataTable } from "@/components/data-table";
 import type { ColumnDef } from "@tanstack/react-table";
 import { ArrowUpDown, Download, Users } from "lucide-react";
@@ -77,8 +77,45 @@ export default function StudentReportsPage() {
   const [rawData, setRawData] = useState<any>(null);
   const [searchId, setSearchId] = useState("");
   const [searchEmail, setSearchEmail] = useState("");
+  const [selectedBatchNames, setSelectedBatchNames] = useState<string[]>([]);
   const [totalStudents, setTotalStudents] = useState<number | null>(null);
+  // Dropdown open state
+  const [batchDropdownOpen, setBatchDropdownOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const filterBarRef = useRef<HTMLDivElement>(null);
+  const [dropdownMaxHeight, setDropdownMaxHeight] = useState<number>(250);
+  const [showAllBatches, setShowAllBatches] = useState(false);
 
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      const dropdown = document.getElementById("batch-dropdown");
+      if (dropdown && !dropdown.contains(event.target as Node)) {
+        setBatchDropdownOpen(false);
+      }
+    }
+    if (batchDropdownOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [batchDropdownOpen]);
+
+  // Dynamically set dropdown max height to avoid overlapping table
+  useEffect(() => {
+    if (batchDropdownOpen && filterBarRef.current) {
+      const filterBarRect = filterBarRef.current.getBoundingClientRect();
+      const tableRect = document.querySelector(".data-table")?.getBoundingClientRect();
+      if (tableRect) {
+        // Space between filter bar and top of table
+        const space = tableRect.top - filterBarRect.bottom - 16; // 16px margin
+        setDropdownMaxHeight(space > 120 ? space : 120); // minimum 120px
+      } else {
+        setDropdownMaxHeight(250);
+      }
+    }
+  }, [batchDropdownOpen, students]);
 
   useEffect(() => {
     async function fetchStudents() {
@@ -147,10 +184,16 @@ export default function StudentReportsPage() {
     XLSX.writeFile(wb, "student-list.xlsx");
   }
 
+  // Extract unique batch names for filter dropdown
+  const batchNameOptions = Array.from(
+    new Set(students.map(s => s.Batchname).filter(Boolean))
+  );
+
   const filteredStudents = students.filter(student => {
     const idMatch = searchId ? student.Idcardno.toLowerCase().includes(searchId.toLowerCase()) : true;
     const emailMatch = searchEmail ? student.emailid.toLowerCase().includes(searchEmail.toLowerCase()) : true;
-    return idMatch && emailMatch;
+    const batchMatch = selectedBatchNames.length > 0 ? selectedBatchNames.includes(student.Batchname) : true;
+    return idMatch && emailMatch && batchMatch;
   });
 
   return (
@@ -201,8 +244,12 @@ export default function StudentReportsPage() {
               <Download className="w-5 h-5" />
             </button>
           </div>
-          {/* Search bars for ID, Name, and Email */}
-          <div className="flex flex-col md:flex-row gap-4 mb-4">
+          {/* Search bars for ID, Name, Email, and Batch Name */}
+          <div
+            className="flex flex-col md:flex-row gap-4 mb-4 items-center"
+            ref={filterBarRef}
+            style={{ minHeight: "40px" }}
+          >
             <Input
               type="text"
               placeholder="Search by TIME ID..."
@@ -217,12 +264,149 @@ export default function StudentReportsPage() {
               value={searchEmail}
               onChange={e => setSearchEmail(e.target.value)}
             />
+            {/* Batch Name Multi-Select Dropdown */}
+            <div className="relative" style={{ minWidth: "300px", width: "300px" }}>
+              <button
+                type="button"
+                className="w-full border rounded px-2 dark:bg-black-900 dark:text-white text-left text-sm text-gray-500"
+                style={{ height: "40px" }}
+                onClick={() => setBatchDropdownOpen(open => !open)}
+              >
+                {selectedBatchNames.length > 0
+                  ? `Filter by Batch Name (${selectedBatchNames.length} selected)`
+                  : "Filter by Batch Name"}
+              </button>
+              {batchDropdownOpen && (
+                <div
+                  id="batch-dropdown"
+                  ref={dropdownRef}
+                  className="absolute z-10 mt-1 bg-white dark:bg-black border rounded shadow w-full overflow-auto"
+                  style={{
+                    maxHeight: dropdownMaxHeight,
+                    minHeight: "80px",
+                    transition: "max-height 0.2s",
+                  }}
+                >
+                  {batchNameOptions.map(batch => {
+                    const selected = selectedBatchNames.includes(batch);
+                    return (
+                      <div
+                        key={batch}
+                        className={`flex items-center px-2 py-2 cursor-pointer hover:bg-blue-50 dark:hover:bg-gray-800 transition text-sm`}
+                        onClick={() => {
+                          if (!selected) {
+                            setSelectedBatchNames(prev => [...prev, batch]);
+                          } else {
+                            setSelectedBatchNames(prev =>
+                              prev.filter(b => b !== batch)
+                            );
+                          }
+                        }}
+                        style={{ userSelect: "none", fontSize: "0.92rem" }}
+                      >
+                        <span className="mr-2 w-4 text-blue-600 text-sm">
+                          {selected ? "✔" : ""}
+                        </span>
+                        <span>{batch}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Show collapsed badges of selected batches to the right */}
+            <div className="flex items-center ml-2 relative">
+              {selectedBatchNames.length > 0 && (
+                <>
+                  <span
+                    className="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded mr-1"
+                  >
+                    {selectedBatchNames[0]}
+                    <button
+                      type="button"
+                      className="ml-1 text-blue-800 hover:text-red-600"
+                      onClick={() =>
+                        setSelectedBatchNames(prev =>
+                          prev.filter(b => b !== selectedBatchNames[0])
+                        )
+                      }
+                      aria-label={`Remove ${selectedBatchNames[0]}`}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        cursor: "pointer",
+                        padding: 0,
+                        fontSize: "1em",
+                        lineHeight: 1,
+                      }}
+                    >
+                      ×
+                    </button>
+                  </span>
+                  {selectedBatchNames.length > 1 && (
+                    <span
+                      className="inline-flex items-center bg-gray-200 text-gray-700 text-xs font-medium px-2 py-1 rounded cursor-pointer"
+                      onClick={() => setShowAllBatches(true)}
+                      style={{ userSelect: "none" }}
+                    >
+                      +{selectedBatchNames.length - 1} more
+                    </span>
+                  )}
+                  {/* Popover for all selected batches */}
+                  {showAllBatches && (
+                    <div
+                      className="absolute left-0 mt-2 bg-white dark:bg-black border rounded shadow-lg p-2 z-20"
+                      style={{ minWidth: "220px" }}
+                    >
+                      <div className="flex flex-col gap-2">
+                        {selectedBatchNames.map(batch => (
+                          <span
+                            key={batch}
+                            className="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded"
+                          >
+                            {batch}
+                            <button
+                              type="button"
+                              className="ml-1 text-blue-800 hover:text-red-600"
+                              onClick={() => {
+                                setSelectedBatchNames(prev =>
+                                  prev.filter(b => b !== batch)
+                                );
+                                // If last batch removed, close popover
+                                if (selectedBatchNames.length === 1) setShowAllBatches(false);
+                              }}
+                              aria-label={`Remove ${batch}`}
+                              style={{
+                                background: "none",
+                                border: "none",
+                                cursor: "pointer",
+                                padding: 0,
+                                fontSize: "1em",
+                                lineHeight: 1,
+                              }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                      <button
+                        className="mt-2 text-xs text-gray-600 hover:text-blue-700 underline"
+                        onClick={() => setShowAllBatches(false)}
+                      >
+                        Close
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
           </div>
           <DataTable
             columns={columns}
             data={filteredStudents}
             filterColumn="studname"
-            filterPlaceholder="Search by Name."
+            filterPlaceholder="Search by Name..."
           />
         </Card>
         {loading && (
